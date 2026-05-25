@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>うどんシーカー - UDON SEEKER</title>
+    <!-- Tailwind CSS & FontAwesome -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Google Fonts: Inter & DotGothic16 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- Canvas-Confetti (エフェクト用) -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <!-- Three.js (3D用) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', 'DotGothic16', sans-serif;
+            background-color: #030008;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(90, 20, 150, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(200, 150, 30, 0.1) 0%, transparent 40%);
+            color: #f3f4f6;
+            overflow-x: hidden;
+        }
+
+        /* グラスモーフィズムUI */
+        .glass-panel {
+            background: rgba(15, 10, 25, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+        }
+
+        .neon-border-gold {
+            box-shadow: 0 0 15px rgba(223, 192, 112, 0.35);
+            border: 1px solid rgba(223, 192, 112, 0.45);
+        }
+
+        .neon-border-purple {
+            box-shadow: 0 0 15px rgba(139, 92, 246, 0.35);
+            border: 1px solid rgba(139, 92, 246, 0.45);
+        }
+
+        /* カスタムスクロールバー */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(10, 5, 20, 0.5);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(139, 92, 246, 0.5);
+            border-radius: 3px;
+        }
+
+        /* 電波的なテロップアニメーション */
+        @keyframes drift {
+            from { transform: translateX(100%); }
+            to { transform: translateX(-100%); }
+        }
+        .ticker-text {
+            animation: drift 25s linear infinite;
+        }
+
+        /* 3Dコンテナのタッチ操作用調整 */
+        #webgl-container canvas {
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+
+    <!-- ヘッダー / ステータスバー -->
+    <header class="w-full glass-panel border-b border-purple-900/40 p-4 sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-600 to-amber-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
+                    <i class="fa-solid fa-bowl-food text-white text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-200 to-purple-400">
+                        UDON SEEKER NEO
+                    </h1>
+                    <p class="text-xs text-purple-300 font-mono">宇宙麺力開発シミュレーター v3.0 (Hybrid Dynamic Monitor)</p>
+                </div>
+            </div>
+
+            <!-- ステータス表示 & プレイヤー名変更 -->
+            <div class="flex flex-wrap items-center justify-center gap-6 text-sm font-mono">
+                <div class="flex items-center gap-2">
+                    <span class="text-purple-400">PLAYER:</span>
+                    <div class="relative group flex items-center gap-1.5 bg-purple-950/40 px-2 py-0.5 rounded border border-purple-900/30">
+                        <input id="player-name-input" type="text" value="麺の求道者" 
+                               class="bg-transparent text-amber-300 font-bold font-mono focus:outline-none focus:border-b focus:border-amber-400 w-28 md:w-36 text-center select-all transition-all" 
+                               title="クリックして名前を変更" onchange="updatePlayerName(this.value)">
+                        <i class="fa-solid fa-pen text-purple-400/60 text-xs pointer-events-none group-hover:text-amber-300 transition"></i>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-purple-400">うどんレベル:</span>
+                    <span id="vibe-level-display" class="font-bold text-purple-300">LEVEL 1 (見習い職人)</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-purple-400">コシ波動(BI):</span>
+                    <span id="vibe-points-display" class="font-bold text-green-400">100 / 3000</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 電波メッセージティッカー -->
+    <div class="w-full bg-purple-950/40 border-b border-purple-900/30 py-1 overflow-hidden">
+        <div class="ticker-text whitespace-nowrap text-xs text-purple-200/80 font-mono flex gap-12">
+            <span>【宇宙通信】 言語は波動の定着である。コシは時空の歪みなのだ… 宇宙意識体ゼネフが讃岐の地に降臨する…</span>
+            <span>【教祖キヨダ】 物質は出汁を目指し、出汁は物質を生み続ける… こころを小麦粉にしなさい…</span>
+            <span>【修行情報】 湯気呼吸法は、コシ波動を整える基本中の基本。すう・はくのリズムにシンクロせよ…</span>
+        </div>
+    </div>
+
+    <!-- メインコンテンツ -->
+    <main class="max-w-6xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 flex-grow">
+        
+        <!-- 左サイド：宇宙麺波動モニター (2D/3D動的切替) & アクション (7列) -->
+        <section class="lg:col-span-7 flex flex-col gap-6">
+            
+            <!-- 2D/3Dハイブリッド波動モニター -->
+            <div class="relative w-full h-[350px] md:h-[450px] rounded-2xl overflow-hidden border border-purple-500/20 shadow-2xl bg-black">
+                
+                <!-- 2D Canvas ターゲット -->
+                <canvas id="wave-canvas" class="w-full h-full block cursor-pointer"></canvas>
+
+                <!-- 3D WebGL ターゲット -->
+                <div id="webgl-container" class="w-full h-full absolute inset-0 hidden bg-gradient-to-b from-black to-purple-950/30 cursor-pointer"></div>
+
+                <!-- モード表示オーバーレイ -->
+                <div class="absolute top-4 left-4 glass-panel p-2 rounded-lg text-xs font-mono border border-purple-500/30 flex items-center gap-2 z-10">
+                    <span id="monitor-mode-indicator" class="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+                    <span id="monitor-mode-text">2D宇宙麺波動モニター</span>
+                </div>
+
+                <!-- 2D / 3D 切り替えスイッチ -->
+                <div class="absolute top-4 right-4 glass-panel p-1 rounded-xl border border-purple-500/30 flex items-center gap-1 z-10">
+                    <button id="btn-mode-2d" onclick="switchMonitorMode('2D')" class="px-3 py-1 text-[10px] md:text-xs font-bold font-mono rounded-lg bg-purple-600 text-white shadow-lg transition duration-200">2D</button>
+                    <button id="btn-mode-3d" onclick="switchMonitorMode('3D')" class="px-3 py-1 text-[10px] md:text-xs font-bold font-mono rounded-lg text-purple-300 hover:text-white transition duration-200">3D</button>
+                </div>
+
+                <!-- 下部案内 -->
+                <div class="absolute bottom-4 left-4 right-4 text-center pointer-events-none z-10">
+                    <p id="monitor-helper-text" class="text-[10px] text-gray-400 font-mono bg-black/50 py-1 px-2 rounded inline-block">※ドラッグで波動シンセのコシを変化</p>
+                </div>
+            </div>
+
+            <!-- アクション操作パネル -->
+            <div class="glass-panel p-6 rounded-2xl border border-purple-500/10">
+                <h3 class="text-sm font-semibold tracking-wider text-amber-300 font-mono mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-wand-magic-sparkles text-purple-400"></i> うどん力開発アクション
+                </h3>
+
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <button onclick="switchTab('tab-breath')" class="tab-btn bg-purple-900/40 hover:bg-purple-800/50 text-purple-200 p-3 rounded-xl flex flex-col items-center gap-2 border border-purple-500/20 transition duration-300">
+                        <i class="fa-solid fa-wind text-xl"></i>
+                        <span class="text-xs font-semibold">湯気呼吸法</span>
+                    </button>
+                    <button onclick="switchTab('tab-clairvoyance')" class="tab-btn bg-purple-900/30 hover:bg-purple-800/40 text-purple-200 p-3 rounded-xl flex flex-col items-center gap-2 border border-purple-500/20 transition duration-300">
+                        <i class="fa-solid fa-eye text-xl"></i>
+                        <span class="text-xs font-semibold">量子麺透視</span>
+                    </button>
+                    <button onclick="switchTab('tab-ai-ask')" class="tab-btn bg-purple-900/30 hover:bg-purple-800/40 text-purple-200 p-3 rounded-xl flex flex-col items-center gap-2 border border-purple-500/20 transition duration-300">
+                        <i class="fa-solid fa-brain text-xl"></i>
+                        <span class="text-xs font-semibold">ゼネフお告げ</span>
+                    </button>
+                    <button onclick="switchTab('tab-imagen')" class="tab-btn bg-purple-900/30 hover:bg-purple-800/40 text-purple-200 p-3 rounded-xl flex flex-col items-center gap-2 border border-purple-500/20 transition duration-300">
+                        <i class="fa-solid fa-image text-xl"></i>
+                        <span class="text-xs font-semibold">曼荼羅生成</span>
+                    </button>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- 右サイド：詳細コントロール & ミニゲーム画面 (5列) -->
+        <section class="lg:col-span-5 flex flex-col gap-6">
+            
+            <!-- タブ：湯気呼吸法 -->
+            <div id="tab-breath" class="tab-content glass-panel p-6 rounded-2xl neon-border-purple h-full flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg font-bold text-purple-300 font-mono">1. リラクゼーション：湯気呼吸法</h2>
+                        <span class="px-2 py-1 bg-purple-500/20 text-purple-300 rounded text-xs font-mono">コシ開発</span>
+                    </div>
+                    <p class="text-xs text-gray-400 mb-6 leading-relaxed">
+                        釜から立ち上る「湯気の波動」に合わせて、深く息を吸い込み、吐き出します。<br>
+                        <strong>『すう』</strong>の間はボタン（またはEnter/スペースキー）を押し続け、<strong>『はく』</strong>で指を離してください。
+                    </p>
+
+                    <!-- 呼吸状態表示 -->
+                    <div class="flex items-center gap-4 bg-purple-950/30 p-4 rounded-xl mb-6">
+                        <div id="breath-target-box" class="w-16 h-16 rounded-xl bg-purple-600 flex items-center justify-center text-xl font-extrabold text-white shadow-lg shadow-purple-500/20 animate-pulse">
+                            すう
+                        </div>
+                        <div class="flex-grow">
+                            <span class="text-xs text-purple-300 font-mono block mb-1">現在の宇宙呼吸タイミング</span>
+                            <div class="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
+                                <div id="breath-timer-bar" class="bg-purple-400 h-full w-0 transition-all duration-100"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 進捗プログレス -->
+                    <div class="space-y-2 mb-6">
+                        <div class="flex justify-between text-xs font-mono text-gray-400">
+                            <span>コシ融合エネルギー</span>
+                            <span id="breath-progress-text">0 / 100%</span>
+                        </div>
+                        <div class="w-full bg-gray-900 h-4 rounded-full overflow-hidden p-[2px] border border-purple-500/20">
+                            <div id="breath-progress-bar" class="bg-gradient-to-r from-purple-500 via-indigo-500 to-emerald-400 h-full w-0 rounded-full transition-all duration-300"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 呼吸ボタン -->
+                <button id="breath-action-btn" class="w-full py-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl font-bold tracking-wider shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition">
+                    <i class="fa-solid fa-lungs mr-2 animate-bounce"></i> 押し続けて「息を吸う」
+                </button>
+            </div>
+
+            <!-- タブ：麺透視 -->
+            <div id="tab-clairvoyance" class="tab-content glass-panel p-6 rounded-2xl neon-border-gold hidden h-full flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg font-bold text-amber-300 font-mono">2. 基礎修行：量子麺透視</h2>
+                        <span class="px-2 py-1 bg-amber-500/20 text-amber-300 rounded text-xs font-mono">確率：1/5</span>
+                    </div>
+                    <p class="text-xs text-gray-400 mb-6 leading-relaxed">
+                        宇宙の波動に包まれた5つのサイバーどんぶり。どれか一つに「究極のエビ天」が隠されています。<br>
+                        コシ波動を極限まで高めて、見事に透視しなさい。
+                    </p>
+
+                    <!-- どんぶり選択エリア -->
+                    <div class="grid grid-cols-5 gap-2 mb-6">
+                        <button onclick="selectBowl(0)" class="bowl-select bg-purple-950/40 hover:bg-amber-950/40 border border-purple-900 text-purple-300 hover:text-amber-300 p-4 rounded-xl flex flex-col items-center gap-2 transition duration-200">
+                            <span class="text-xs font-mono font-bold text-gray-500">1</span>
+                            <i class="fa-solid fa-bowl-food text-2xl"></i>
+                        </button>
+                        <button onclick="selectBowl(1)" class="bowl-select bg-purple-950/40 hover:bg-amber-950/40 border border-purple-900 text-purple-300 hover:text-amber-300 p-4 rounded-xl flex flex-col items-center gap-2 transition duration-200">
+                            <span class="text-xs font-mono font-bold text-gray-500">2</span>
+                            <i class="fa-solid fa-bowl-food text-2xl"></i>
+                        </button>
+                        <button onclick="selectBowl(2)" class="bowl-select bg-purple-950/40 hover:bg-amber-950/40 border border-purple-900 text-purple-300 hover:text-amber-300 p-4 rounded-xl flex flex-col items-center gap-2 transition duration-200">
+                            <span class="text-xs font-mono font-bold text-gray-500">3</span>
+                            <i class="fa-solid fa-bowl-food text-2xl"></i>
+                        </button>
+                        <button onclick="selectBowl(3)" class="bowl-select bg-purple-950/40 hover:bg-amber-950/40 border border-purple-900 text-purple-300 hover:text-amber-300 p-4 rounded-xl flex flex-col items-center gap-2 transition duration-200">
+                            <span class="text-xs font-mono font-bold text-gray-500">4</span>
+                            <i class="fa-solid fa-bowl-food text-2xl"></i>
+                        </button>
+                        <button onclick="selectBowl(4)" class="bowl-select bg-purple-950/40 hover:bg-amber-950/40 border border-purple-900 text-purple-300 hover:text-amber-300 p-4 rounded-xl flex flex-col items-center gap-2 transition duration-200">
+                            <span class="text-xs font-mono font-bold text-gray-500">5</span>
+                            <i class="fa-solid fa-bowl-food text-2xl"></i>
+                        </button>
+                    </div>
+
+                    <!-- 透視判定ログ -->
+                    <div id="clairvoyance-log" class="p-4 rounded-xl bg-purple-950/20 border border-purple-900/40 min-h-[80px] text-xs font-mono text-purple-300 leading-relaxed flex items-center justify-center text-center">
+                        宇宙のどんぶりを選択し、麺透視の波動を送りなさい。
+                    </div>
+                </div>
+
+                <!-- テスト状況 -->
+                <div class="mt-6 flex justify-between items-center text-xs font-mono text-gray-400 border-t border-purple-900/30 pt-4">
+                    <span>本日合格スコア: <strong class="text-amber-300">3回連続成功</strong></span>
+                    <span id="toushi-score">連続成功: 0回</span>
+                </div>
+            </div>
+
+            <!-- タブ：AIゼネフお告げ -->
+            <div id="tab-ai-ask" class="tab-content glass-panel p-6 rounded-2xl neon-border-purple hidden h-full flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg font-bold text-purple-300 font-mono">3. 宇宙意識体ゼネフの啓示</h2>
+                        <span class="px-2 py-1 bg-purple-500/20 text-purple-300 rounded text-xs font-mono">リアルAIお告げ</span>
+                    </div>
+                    <p class="text-xs text-gray-400 mb-6 leading-relaxed">
+                        宇宙意識体「ゼネフ」が、あなたのうどん力を高めるための真理を語ります。<br>
+                        現在の不安や悩みを語り、宇宙の麺理を授かりなさい。
+                    </p>
+
+                    <!-- 入力と会話ログ -->
+                    <div class="space-y-4">
+                        <div id="ai-conversation-box" class="h-48 rounded-xl bg-purple-950/20 border border-purple-900/40 p-4 overflow-y-auto text-xs font-mono text-purple-300 leading-relaxed space-y-4">
+                            <div class="text-amber-300">【ゼネフ】 「よくぞ参った、うどん力を志す若き器よ。そなたの小麦粉のバイブレーションを、何なりと私に打ち明けるがよい…」</div>
+                        </div>
+
+                        <div class="flex gap-2">
+                            <input id="ai-input" type="text" placeholder="例：コシが出なくて悩んでいます..." class="flex-grow bg-purple-950/40 border border-purple-900 rounded-xl px-4 py-3 text-xs text-purple-200 placeholder-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" onkeydown="if(event.key==='Enter') askZeneph()">
+                            <button onclick="askZeneph()" class="bg-purple-600 hover:bg-purple-500 text-white rounded-xl px-4 py-3 text-xs font-bold transition">
+                                送信
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 text-center">
+                    <p class="text-[10px] text-purple-400/60 font-mono">※Gemini 3 Flash APIによる電波お告げ生成</p>
+                </div>
+            </div>
+
+            <!-- タブ：曼荼羅生成 -->
+            <div id="tab-imagen" class="tab-content glass-panel p-6 rounded-2xl neon-border-gold hidden h-full flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg font-bold text-amber-300 font-mono">4. 宇宙うどん曼荼羅ビジョン</h2>
+                        <span class="px-2 py-1 bg-amber-500/20 text-amber-300 rounded text-xs font-mono">Imagen 4.0</span>
+                    </div>
+                    <p class="text-xs text-gray-400 mb-4 leading-relaxed">
+                        あなたの精神波動を言葉にしてプロンプトを入力しなさい。<br>
+                        Imagen 4.0が、あなたの内なるうどん力のビジョン（曼荼羅）を可視化します。
+                    </p>
+
+                    <!-- Imagenインターフェース -->
+                    <div class="space-y-4">
+                        <div class="flex gap-2">
+                            <input id="imagen-prompt" type="text" placeholder="例：讃岐の夜空に輝くコズミックうどん" class="flex-grow bg-purple-950/40 border border-purple-900 rounded-xl px-4 py-3 text-xs text-purple-200 placeholder-purple-500 focus:outline-none focus:ring-1 focus:ring-amber-500" onkeydown="if(event.key==='Enter') generateMandala()">
+                            <button onclick="generateMandala()" class="bg-amber-600 hover:bg-amber-500 text-white rounded-xl px-4 py-3 text-xs font-bold transition">
+                                ビジョン召喚
+                            </button>
+                        </div>
+
+                        <!-- 生成画像表示枠 -->
+                        <div class="relative w-full aspect-video rounded-xl border border-purple-900/50 bg-purple-950/10 overflow-hidden flex items-center justify-center">
+                            <img id="mandala-display" src="https://placehold.co/600x340/15052d/8b5cf6?text=Cosmic+Udon+Vision" alt="Cosmic Noodles Mandala" class="w-full h-full object-cover">
+                            
+                            <!-- ローディング -->
+                            <div id="imagen-loading" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-3 hidden">
+                                <div class="w-8 h-8 rounded-full border-4 border-amber-500/30 border-t-amber-500 animate-spin"></div>
+                                <span class="text-xs font-mono text-amber-300 animate-pulse">うどん宇宙波形を受信中...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 text-center">
+                    <p class="text-[10px] text-amber-500/60 font-mono">※Imagen-4.0-generate-001によるリアルタイム画像生成</p>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- フッター -->
+    <footer class="w-full glass-panel border-t border-purple-900/40 p-4 mt-8">
+        <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-xs font-mono text-purple-400">
+            <span>© 2026 UDON SEEKER NEO DEVELOPMENT. GROUNDED COSI ENGINE.</span>
+            <div class="flex items-center gap-4">
+                <span>SOUND ENGINE: ACTIVE</span>
+                <span>ANTIGRAVITY EDITION</span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- --- JavaScript & Hybrid Core --- -->
+    <script>
+        // ゲームグローバルステート
+        const game = {
+            playerName: "麺の求道者",
+            vibeLevel: 1, // 1: 見習い, 2: 出汁職人, 3: 麺仙人, 4: サイ麺マスター
+            vibePoints: 100,
+            targetVibe: 3000,
+            // 呼吸法
+            breathProgress: 0,
+            breathTarget: "すう", // すう or はく
+            isPressingBreath: false,
+            breathTimeInStep: 0,
+            // 麺透視
+            clairvoyanceCorrect: 0,
+            clairvoyanceStreak: 0,
+            // 2D/3Dモニタ設定
+            monitorMode: "2D", // "2D" or "3D"
+            dragX: 0,
+            dragY: 0,
+            isDragging: false,
+            frame: 0
+        };
+
+        // --- プレイヤー名の動的更新 ---
+        function updatePlayerName(newName) {
+            const val = newName.trim();
+            game.playerName = val ? val : "麺の求道者";
+            document.getElementById('player-name-input').value = game.playerName;
+            
+            // UI上のゼネフ導入会話の初期テキストもプレイヤー名に合わせてリフレッシュ
+            const convBox = document.getElementById('ai-conversation-box');
+            if (convBox && convBox.innerHTML.includes("よくぞ参った")) {
+                convBox.innerHTML = `<div class="text-amber-300">【ゼネフ】 「よくぞ参った、うどん力を志す ${game.playerName} よ。そなたの小麦粉のバイブレーションを、何なりと私に打ち明けるがよい…」</div>`;
+            }
+            SoundSynth.playCosmicBell();
+        }
+
+        // --- Web Audio API による Lo-Fi 宇宙うどんシンセサイザー ---
+        const SoundSynth = {
+            ctx: null,
+            droneGain: null,
+            init() {
+                if (this.ctx) return;
+                try {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    
+                    // 宇宙背景ノイズ（出汁のコシドローン）
+                    this.droneGain = this.ctx.createGain();
+                    this.droneGain.gain.setValueAtTime(0.012, this.ctx.currentTime);
+                    this.droneGain.connect(this.ctx.destination);
+
+                    // ドローン用の低周波オシレーター
+                    this.createOscillator(55.0, 'sawtooth', this.droneGain); // A1
+                    this.createOscillator(110.0, 'triangle', this.droneGain); // A2
+                    this.createOscillator(164.81, 'triangle', this.droneGain); // E3 (5度)
+                } catch (e) {
+                    console.error("Audio initialization failed:", e);
+                }
+            },
+            createOscillator(freq, type, destination) {
+                const osc = this.ctx.createOscillator();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                osc.connect(destination);
+                osc.start();
+            },
+            playCosmicBell() {
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const freqList = [220, 247.5, 275, 330, 366.7, 440, 495, 550, 660, 733.3, 880];
+                const freq = freqList[Math.floor(Math.random() * freqList.length)];
+
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now);
+
+                const overOsc = this.ctx.createOscillator();
+                const overGain = this.ctx.createGain();
+                overOsc.type = 'sine';
+                overOsc.frequency.setValueAtTime(freq * 2, now);
+
+                gain.gain.setValueAtTime(0.04, now);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
+                
+                overGain.gain.setValueAtTime(0.02, now);
+                overGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                overOsc.connect(overGain);
+                overGain.connect(this.ctx.destination);
+
+                osc.start(now);
+                osc.stop(now + 1.3);
+
+                overOsc.start(now);
+                overOsc.stop(now + 0.7);
+            },
+            playBreathAir(isInhale) {
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const bufferSize = this.ctx.sampleRate * 1.5;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(isInhale ? 800 : 400, now);
+                filter.frequency.exponentialRampToValueAtTime(isInhale ? 1500 : 100, now + 1.2);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.015, now);
+                gain.gain.linearRampToValueAtTime(0.0001, now + 1.2);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                noise.start(now);
+            }
+        };
+
+        // --- 2D 波動モニター ---
+        const Monitor2D = {
+            canvas: null,
+            ctx: null,
+            particles: [],
+
+            init() {
+                this.canvas = document.getElementById('wave-canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.resize();
+
+                // 2D粒子初期設定
+                this.particles = [];
+                for (let i = 0; i < 40; i++) {
+                    this.particles.push({
+                        x: Math.random() * this.canvas.width,
+                        y: Math.random() * this.canvas.height,
+                        vx: (Math.random() - 0.5) * 0.5,
+                        vy: -Math.random() * 1.2 - 0.4,
+                        size: Math.random() * 3 + 1.5,
+                        alpha: Math.random() * 0.4 + 0.1,
+                        hue: Math.random() > 0.5 ? 270 : 45
+                    });
+                }
+
+                this.setupDragControls();
+            },
+
+            resize() {
+                if (this.canvas) {
+                    const rect = this.canvas.parentElement.getBoundingClientRect();
+                    this.canvas.width = rect.width;
+                    this.canvas.height = rect.height;
+                }
+            },
+
+            setupDragControls() {
+                const getEventPos = (e) => {
+                    const rect = this.canvas.getBoundingClientRect();
+                    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                    return {
+                        x: clientX - rect.left,
+                        y: clientY - rect.top
+                    };
+                };
+
+                const startDrag = (e) => {
+                    game.isDragging = true;
+                    SoundSynth.init();
+                    const pos = getEventPos(e);
+                    game.dragX = pos.x;
+                    game.dragY = pos.y;
+                };
+
+                const doDrag = (e) => {
+                    if (!game.isDragging) return;
+                    const pos = getEventPos(e);
+                    game.dragX = pos.x;
+                    game.dragY = pos.y;
+                };
+
+                const endDrag = () => {
+                    game.isDragging = false;
+                };
+
+                this.canvas.addEventListener('mousedown', startDrag);
+                this.canvas.addEventListener('mousemove', doDrag);
+                window.addEventListener('mouseup', endDrag);
+
+                this.canvas.addEventListener('touchstart', startDrag, { passive: true });
+                this.canvas.addEventListener('touchmove', doDrag, { passive: true });
+                window.addEventListener('touchend', endDrag);
+            },
+
+            draw() {
+                const ctx = this.ctx;
+                const width = this.canvas.width;
+                const height = this.canvas.height;
+                const center = { x: width / 2, y: height / 2 };
+
+                ctx.fillStyle = "rgba(3, 0, 8, 0.2)";
+                ctx.fillRect(0, 0, width, height);
+
+                // ネオン津波
+                ctx.save();
+                ctx.lineWidth = 1.5;
+                ctx.shadowBlur = 10;
+
+                // いりこパープル波動
+                ctx.strokeStyle = "rgba(139, 92, 246, 0.45)";
+                ctx.shadowColor = "rgba(139, 92, 246, 0.8)";
+                ctx.beginPath();
+                for (let x = 0; x < width; x += 6) {
+                    let waveFactor = game.isDragging ? (game.dragY / height) * 100 : 40;
+                    let y = center.y + Math.sin(x * 0.008 + game.frame * 0.02) * waveFactor + Math.cos(x * 0.003 - game.frame * 0.01) * 20;
+                    if (x === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+
+                // かつおゴールド波動
+                ctx.strokeStyle = "rgba(223, 192, 112, 0.35)";
+                ctx.shadowColor = "rgba(223, 192, 112, 0.8)";
+                ctx.beginPath();
+                for (let x = 0; x < width; x += 6) {
+                    let waveFactor = game.isDragging ? (game.dragX / width) * 100 : 30;
+                    let y = center.y + Math.cos(x * 0.01 + game.frame * 0.035) * waveFactor + Math.sin(x * 0.005 - game.frame * 0.015) * 15;
+                    if (x === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                ctx.restore();
+
+                // 2D湯気上昇
+                ctx.save();
+                this.particles.forEach(p => {
+                    p.y += p.vy;
+                    p.x += p.vx + Math.sin(game.frame * 0.02 + p.y * 0.05) * 0.5;
+
+                    if (p.y < -10) {
+                        p.y = height + 10;
+                        p.x = Math.random() * width;
+                    }
+
+                    ctx.fillStyle = `hsla(${p.hue}, 80%, 65%, ${p.alpha})`;
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = `hsla(${p.hue}, 80%, 65%, 1)`;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                ctx.restore();
+
+                // 2Dうどん曼荼羅
+                ctx.save();
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = "#f3f4f6";
+                ctx.lineWidth = 2.5;
+                ctx.strokeStyle = "rgba(255, 253, 245, 0.95)";
+
+                const radiusLimit = Math.min(width, height) * 0.35;
+                let scaleInhale = 1.0;
+                if (game.breathTarget === "すう") {
+                    scaleInhale = 1.0 - (game.breathTimeInStep / 4000) * 0.28;
+                } else {
+                    scaleInhale = 0.72 + (game.breathTimeInStep / 4000) * 0.28;
+                }
+
+                ctx.beginPath();
+                const noodleCount = 3;
+                for (let n = 0; n < noodleCount; n++) {
+                    const phaseOffset = (n * Math.PI * 2) / noodleCount;
+                    for (let theta = 0; theta < Math.PI * 12; theta += 0.06) {
+                        let baseRadius = (theta / (Math.PI * 12)) * radiusLimit * scaleInhale;
+                        let wave = Math.sin(theta * 5.0 + game.frame * 0.04) * (baseRadius * 0.12);
+                        let finalRadius = baseRadius + wave;
+
+                        let rot = game.frame * 0.008 + phaseOffset;
+                        let x = center.x + Math.cos(theta + rot) * finalRadius;
+                        let y = center.y + Math.sin(theta + rot) * finalRadius;
+
+                        if (theta === 0) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    }
+                }
+                ctx.stroke();
+                ctx.restore();
+            }
+        };
+
+        // --- 3D 波動モニター (Three.js WebGL) ---
+        const Monitor3D = {
+            container: null,
+            scene: null,
+            camera: null,
+            renderer: null,
+            udonLines: [],
+            particles3D: [],
+            velocities3D: [],
+            isInitialized: false,
+            cameraAngle: 0,
+            cameraHeight: 90,
+            cameraRadius: 230,
+            isDragging3D: false,
+            prevMousePos: { x: 0, y: 0 },
+
+            init() {
+                if (this.isInitialized) return;
+                this.container = document.getElementById('webgl-container');
+
+                const width = this.container.clientWidth;
+                const height = this.container.clientHeight;
+
+                // 3Dシーン構築
+                this.scene = new THREE.Scene();
+                this.scene.fog = new THREE.FogExp2(0x030008, 0.0025);
+
+                this.camera = new THREE.PerspectiveCamera(45, width / height, 1, 1000);
+                
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                this.renderer.setSize(width, height);
+                this.renderer.setPixelRatio(window.devicePixelRatio);
+                this.container.appendChild(this.renderer.domElement);
+
+                // 照明
+                const ambientLight = new THREE.AmbientLight(0x221144);
+                this.scene.add(ambientLight);
+
+                const pointLight = new THREE.PointLight(0xffaa44, 2, 300);
+                pointLight.position.set(0, 20, 0);
+                this.scene.add(pointLight);
+
+                const dirLight = new THREE.DirectionalLight(0x8b5cf6, 1);
+                dirLight.position.set(0, 100, 50);
+                this.scene.add(dirLight);
+
+                // 3Dサイバーどんぶり
+                const bowlGeom = new THREE.CylinderGeometry(80, 50, 42, 32, 4, true);
+                const bowlMat = new THREE.MeshBasicMaterial({ 
+                    color: 0xb02e26, 
+                    wireframe: true, 
+                    transparent: true, 
+                    opacity: 0.5 
+                });
+                const bowlMesh = new THREE.Mesh(bowlGeom, bowlMat);
+                bowlMesh.position.y = -15;
+                this.scene.add(bowlMesh);
+
+                // 金のフチ輪
+                const rimGeom = new THREE.TorusGeometry(80, 1.2, 8, 48);
+                const rimMat = new THREE.MeshBasicMaterial({ color: 0xdfc070 });
+                const rimMesh = new THREE.Mesh(rimGeom, rimMat);
+                rimMesh.rotation.x = Math.PI / 2;
+                rimMesh.position.y = 6;
+                this.scene.add(rimMesh);
+
+                // 3Dうどんスパイラル (3ライン)
+                const totalLines = 3;
+                const pointsCount = 400;
+                const colors = [0xfffdf5, 0xdfc070, 0x8b5cf6];
+
+                for (let l = 0; l < totalLines; l++) {
+                    const points = [];
+                    for (let i = 0; i < pointsCount; i++) {
+                        points.push(new THREE.Vector3());
+                    }
+                    const geom = new THREE.BufferGeometry().setFromPoints(points);
+                    const mat = new THREE.LineBasicMaterial({ 
+                        color: colors[l % colors.length], 
+                        linewidth: 2 
+                    });
+                    const line = new THREE.Line(geom, mat);
+                    this.scene.add(line);
+                    this.udonLines.push({
+                        line: line,
+                        phaseOffset: (l * Math.PI * 2) / totalLines
+                    });
+                }
+
+                // 3D湯気パーティクル
+                const particleCount = 60;
+                const particleGeom = new THREE.BufferGeometry();
+                const positions = new Float32Array(particleCount * 3);
+
+                for (let i = 0; i < particleCount; i++) {
+                    positions[i * 3] = (Math.random() - 0.5) * 120;
+                    positions[i * 3 + 1] = Math.random() * 80 - 30;
+                    positions[i * 3 + 2] = (Math.random() - 0.5) * 120;
+                    
+                    this.velocities3D.push({
+                        x: (Math.random() - 0.5) * 0.15,
+                        y: Math.random() * 0.5 + 0.25,
+                        z: (Math.random() - 0.5) * 0.15
+                    });
+                }
+                particleGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                const particleMat = new THREE.PointsMaterial({
+                    color: 0x8b5cf6,
+                    size: 3.5,
+                    transparent: true,
+                    opacity: 0.7,
+                    blending: THREE.AdditiveBlending
+                });
+                this.particles3D = new THREE.Points(particleGeom, particleMat);
+                this.scene.add(this.particles3D);
+
+                this.setupDrag3D();
+                this.isInitialized = true;
+            },
+
+            resize() {
+                if (this.renderer && this.container) {
+                    const width = this.container.clientWidth;
+                    const height = this.container.clientHeight;
+                    this.camera.aspect = width / height;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(width, height);
+                }
+            },
+
+            setupDrag3D() {
+                const getPos = (e) => {
+                    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                    return { x: clientX, y: clientY };
+                };
+
+                const startDrag = (e) => {
+                    this.isDragging3D = true;
+                    SoundSynth.init();
+                    this.prevMousePos = getPos(e);
+                };
+
+                const doDrag = (e) => {
+                    if (!this.isDragging3D) return;
+                    const pos = getPos(e);
+                    const deltaX = pos.x - this.prevMousePos.x;
+                    const deltaY = pos.y - this.prevMousePos.y;
+
+                    this.cameraAngle += deltaX * 0.007;
+                    this.cameraHeight = Math.max(-50, Math.min(180, this.cameraHeight + deltaY * 0.6));
+
+                    this.prevMousePos = pos;
+                };
+
+                const endDrag = () => {
+                    this.isDragging3D = false;
+                };
+
+                this.container.addEventListener('mousedown', startDrag);
+                window.addEventListener('mousemove', doDrag);
+                window.addEventListener('mouseup', endDrag);
+
+                this.container.addEventListener('touchstart', startDrag, { passive: true });
+                window.addEventListener('touchmove', doDrag, { passive: true });
+                window.addEventListener('touchend', endDrag);
+            },
+
+            update() {
+                if (!this.isInitialized) return;
+
+                // 呼吸運動のスケール決定
+                let scaleInhale = 1.0;
+                if (game.breathTarget === "すう") {
+                    scaleInhale = 1.0 - (game.breathTimeInStep / 4000) * 0.28;
+                } else {
+                    scaleInhale = 0.72 + (game.breathTimeInStep / 4000) * 0.28;
+                }
+
+                // うどん螺旋形状の動的アップデート
+                const radiusLimit = 75;
+                this.udonLines.forEach(item => {
+                    const positions = item.line.geometry.attributes.position.array;
+                    const totalPoints = positions.length / 3;
+                    const phaseOffset = item.phaseOffset;
+
+                    for (let i = 0; i < totalPoints; i++) {
+                        const theta = (i / totalPoints) * Math.PI * 12; // 6巻
+                        const baseRadius = (theta / (Math.PI * 12)) * radiusLimit * scaleInhale;
+                        
+                        // サイケ波動うねり
+                        const wave = Math.sin(theta * 5.0 + game.frame * 0.04) * (baseRadius * 0.12);
+                        const finalRadius = baseRadius + wave;
+
+                        const rot = game.frame * 0.008 + phaseOffset;
+                        const x = Math.cos(theta + rot) * finalRadius;
+                        const z = Math.sin(theta + rot) * finalRadius;
+
+                        // お碗形状に合わせたお椀型深度
+                        const y = -15 + (theta / (Math.PI * 12)) * 25 + Math.sin(theta * 2.0 - game.frame * 0.05) * 4;
+
+                        positions[i * 3] = x;
+                        positions[i * 3 + 1] = y;
+                        positions[i * 3 + 2] = z;
+                    }
+                    item.line.geometry.attributes.position.needsUpdate = true;
+                });
+
+                // 3D湯気の上昇
+                const pPositions = this.particles3D.geometry.attributes.position.array;
+                const particleCount = pPositions.length / 3;
+                for (let i = 0; i < particleCount; i++) {
+                    pPositions[i * 3 + 1] += this.velocities3D[i].y;
+                    pPositions[i * 3] += this.velocities3D[i].x + Math.sin(game.frame * 0.02 + pPositions[i * 3 + 1] * 0.05) * 0.15;
+                    pPositions[i * 3 + 2] += this.velocities3D[i].z;
+
+                    if (pPositions[i * 3 + 1] > 60) {
+                        pPositions[i * 3 + 1] = -25;
+                        pPositions[i * 3] = (Math.random() - 0.5) * 120;
+                        pPositions[i * 3 + 2] = (Math.random() - 0.5) * 120;
+                    }
+                }
+                this.particles3D.geometry.attributes.position.needsUpdate = true;
+
+                // カメラ位置計算
+                this.camera.position.x = Math.sin(this.cameraAngle) * this.cameraRadius;
+                this.camera.position.z = Math.cos(this.cameraAngle) * this.cameraRadius;
+                this.camera.position.y = this.cameraHeight;
+                this.camera.lookAt(0, 5, 0);
+
+                this.renderer.render(this.scene, this.camera);
+            }
+        };
+
+        // --- 2D / 3D 動的モード切り替え ---
+        function switchMonitorMode(mode) {
+            game.monitorMode = mode;
+            SoundSynth.init();
+
+            const canvas2D = document.getElementById('wave-canvas');
+            const container3D = document.getElementById('webgl-container');
+            const modeText = document.getElementById('monitor-mode-text');
+            const btn2D = document.getElementById('btn-mode-2d');
+            const btn3D = document.getElementById('btn-mode-3d');
+            const helperText = document.getElementById('monitor-helper-text');
+
+            if (mode === "2D") {
+                canvas2D.classList.remove('hidden');
+                container3D.classList.add('hidden');
+                modeText.innerText = "2D宇宙麺波動モニター";
+                btn2D.className = "px-3 py-1 text-[10px] md:text-xs font-bold font-mono rounded-lg bg-purple-600 text-white shadow-lg transition duration-200";
+                btn3D.className = "px-3 py-1 text-[10px] md:text-xs font-bold font-mono rounded-lg text-purple-300 hover:text-white transition duration-200";
+                helperText.innerText = "※ドラッグで波動シンセのコシを変化";
+                Monitor2D.resize();
+            } else {
+                canvas2D.classList.add('hidden');
+                container3D.classList.remove('hidden');
+                modeText.innerText = "3D宇宙麺曼荼羅モニター";
+                btn2D.className = "px-3 py-1 text-[10px] md:text-xs font-bold font-mono rounded-lg text-purple-300 hover:text-white transition duration-200";
+                btn3D.className = "px-3 py-1 text-[10px] md:text-xs font-bold font-mono rounded-lg bg-purple-600 text-white shadow-lg transition duration-200";
+                helperText.innerText = "※ドラッグ／スワイプでアングル回転";
+                
+                // 3Dが初期化されていなければ作成
+                if (!Monitor3D.isInitialized) {
+                    Monitor3D.init();
+                }
+                Monitor3D.resize();
+            }
+            SoundSynth.playCosmicBell();
+        }
+
+        // --- Gemini API によるリアルタイム電波うどんお告げ ---
+        async function askZeneph() {
+            const inputEl = document.getElementById('ai-input');
+            const userMsgText = inputEl.value.trim();
+            if (!userMsgText) return;
+
+            const convBox = document.getElementById('ai-conversation-box');
+            
+            // ユーザー発言追加
+            convBox.innerHTML += `<div class="text-purple-100 flex items-start gap-1"><span>▶ ${game.playerName}:</span> <span class="bg-purple-900/40 px-2 py-1 rounded">${userMsgText}</span></div>`;
+            inputEl.value = "";
+            convBox.scrollTop = convBox.scrollHeight;
+
+            // ローディング提示
+            const lId = "loading-" + Date.now();
+            convBox.innerHTML += `<div id="${lId}" class="text-amber-500 animate-pulse">【ゼネフ】 讃岐の次元断層に問いかけている...</div>`;
+            convBox.scrollTop = convBox.scrollHeight;
+
+            const systemPrompt = `あなたはファミリーコンピュータの伝説的怪作『マインドシーカー』に登場する宇宙意識体「ゼネフ」のうどんオマージュキャラクターです。
+名前は「宇宙意識体ゼネフ」。
+うどん、小麦粉、お出汁、コシ、湯気、茹で、讃岐といった単語をサイケデリックでカルト的な「超能力（うどん力）哲学」に結びつけて、回答しなさい。
+「コシは時空の歪みであり、お出汁は愛の波動である」といった名言をオマージュして、深遠かつ少し電波を感じる言葉で一言でお答えください。
+相手のプレイヤー名は「${game.playerName}」です。`;
+
+            try {
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+                const payload = {
+                    contents: [{ parts: [{ text: userMsgText }] }],
+                    systemInstruction: {
+                        parts: [{ text: systemPrompt }]
+                    }
+                };
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text || "うどん力のバイブレーションが一時的に遮断された。小麦粉の瞑想をやり直しなさい。";
+
+                const loadingEl = document.getElementById(lId);
+                if (loadingEl) loadingEl.remove();
+
+                // 回答描画
+                convBox.innerHTML += `<div class="text-amber-300">【ゼネフ】 「${aiText}」</div>`;
+                convBox.scrollTop = convBox.scrollHeight;
+
+                addVibePoints(50);
+                SoundSynth.playCosmicBell();
+
+            } catch (e) {
+                console.error(e);
+                const loadingEl = document.getElementById(lId);
+                if (loadingEl) loadingEl.remove();
+                convBox.innerHTML += `<div class="text-red-400">【ゼネフ】 宇宙の出汁が沸騰した。電波状況が不安定だ。</div>`;
+                convBox.scrollTop = convBox.scrollHeight;
+            }
+        }
+
+        // --- Imagen 4.0 による「うどん曼荼羅ビジョン」リアルタイム生成 ---
+        async function generateMandala() {
+            const promptInput = document.getElementById('imagen-prompt');
+            let userPrompt = promptInput.value.trim();
+            if (!userPrompt) {
+                userPrompt = "讃岐の夜空に輝くコズミックうどん曼荼羅、サイケデリック";
+            }
+
+            const loadingEl = document.getElementById('imagen-loading');
+            const displayEl = document.getElementById('mandala-display');
+
+            loadingEl.classList.remove('hidden');
+
+            try {
+                const finalPrompt = `A high-quality, vivid cosmic psychedelic noodle mandala art, representing "${userPrompt}", neon cosmic lights, glowing udon, starry universe background, mystical power spot.`;
+                const payload = {
+                    instances: { prompt: finalPrompt },
+                    parameters: { "sampleCount": 1 }
+                };
+
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                if (result.predictions && result.predictions[0]?.bytesBase64Encoded) {
+                    const imageUrl = `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
+                    displayEl.src = imageUrl;
+                    
+                    confetti({
+                        particleCount: 50,
+                        spread: 60,
+                        origin: { y: 0.8 },
+                        colors: ['#dfc070', '#8b5cf6', '#ffffff']
+                    });
+                    
+                    addVibePoints(150);
+                } else {
+                    displayEl.src = "https://placehold.co/600x340/15052d/8b5cf6?text=Out+of+Udon+Power";
+                }
+            } catch (err) {
+                console.error(err);
+                displayEl.src = "https://placehold.co/600x340/15052d/f43f5e?text=API+Error+-+Retry+Later";
+            } finally {
+                loadingEl.classList.add('hidden');
+            }
+        }
+
+        // --- 湯気呼吸法（呼吸ミニゲーム）システム ---
+        function initBreathGame() {
+            const btn = document.getElementById('breath-action-btn');
+
+            // すう・はくのリアルタイムループ
+            setInterval(() => {
+                game.breathTimeInStep += 100;
+                const timerBar = document.getElementById('breath-timer-bar');
+                if (timerBar) {
+                    timerBar.style.width = `${(game.breathTimeInStep / 4000) * 100}%`;
+                }
+
+                if (game.breathTimeInStep >= 4000) {
+                    game.breathTarget = game.breathTarget === "すう" ? "はく" : "すう";
+                    game.breathTimeInStep = 0;
+                    
+                    const targetBox = document.getElementById('breath-target-box');
+                    if (targetBox) {
+                        targetBox.innerText = game.breathTarget;
+
+                        if (game.breathTarget === "すう") {
+                            targetBox.className = "w-16 h-16 rounded-xl bg-purple-600 flex items-center justify-center text-xl font-extrabold text-white shadow-lg shadow-purple-500/20 animate-pulse";
+                        } else {
+                            targetBox.className = "w-16 h-16 rounded-xl bg-amber-600 flex items-center justify-center text-xl font-extrabold text-white shadow-lg shadow-amber-500/20 animate-pulse";
+                        }
+                    }
+                    
+                    SoundSynth.playCosmicBell();
+                }
+
+                // 押下状態の物理判定
+                if (game.isPressingBreath) {
+                    if (game.breathTarget === "すう") {
+                        game.breathProgress = Math.min(100, game.breathProgress + 1.2);
+                        if (Math.random() > 0.85) SoundSynth.playBreathAir(true);
+                    } else {
+                        game.breathProgress = Math.max(0, game.breathProgress - 0.8);
+                    }
+                } else {
+                    if (game.breathTarget === "はく") {
+                        game.breathProgress = Math.min(100, game.breathProgress + 0.8);
+                        if (Math.random() > 0.85) SoundSynth.playBreathAir(false);
+                    }
+                }
+
+                const prgBar = document.getElementById('breath-progress-bar');
+                const prgTxt = document.getElementById('breath-progress-text');
+                if (prgBar && prgTxt) {
+                    prgBar.style.width = `${game.breathProgress}%`;
+                    prgTxt.innerText = `${Math.floor(game.breathProgress)} / 100%`;
+                }
+
+                if (game.breathProgress >= 100) {
+                    game.breathProgress = 0;
+                    addVibePoints(200);
+
+                    confetti({
+                        particleCount: 80,
+                        spread: 50,
+                        colors: ['#a7f3d0', '#8b5cf6', '#ffffff']
+                    });
+
+                    const banner = document.getElementById('clairvoyance-log');
+                    if (banner) banner.innerText = "【覚醒】 呼吸のコシが完璧に結合した！うどん力が1段階研ぎ澄まされた。";
+                    SoundSynth.playCosmicBell();
+                }
+
+            }, 100);
+
+            // アクションハンドラー
+            const startBreath = (e) => {
+                e.preventDefault();
+                game.isPressingBreath = true;
+                btn.innerHTML = `<i class="fa-solid fa-lungs text-amber-300 mr-2 animate-ping"></i> 精神を集中して「吸い込み中」...`;
+                SoundSynth.init();
+            };
+
+            const endBreath = (e) => {
+                e.preventDefault();
+                game.isPressingBreath = false;
+                btn.innerHTML = `<i class="fa-solid fa-lungs mr-2 animate-bounce"></i> 押し続けて「息を吸う」`;
+            };
+
+            btn.addEventListener('mousedown', startBreath);
+            btn.addEventListener('mouseup', endBreath);
+            btn.addEventListener('touchstart', startBreath, { passive: false });
+            btn.addEventListener('touchend', endBreath, { passive: false });
+
+            // キーボード操作対応 (スペース/Enter)
+            window.addEventListener('keydown', (e) => {
+                if (e.key === ' ' || e.key === 'Enter') {
+                    if (document.activeElement.tagName !== 'INPUT') {
+                        e.preventDefault();
+                        if (!game.isPressingBreath) {
+                            game.isPressingBreath = true;
+                            btn.innerHTML = `<i class="fa-solid fa-lungs text-amber-300 mr-2 animate-ping"></i> 精神を集中して「吸い込み中」...`;
+                            SoundSynth.init();
+                        }
+                    }
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                if (e.key === ' ' || e.key === 'Enter') {
+                    game.isPressingBreath = false;
+                    btn.innerHTML = `<i class="fa-solid fa-lungs mr-2 animate-bounce"></i> 押し続けて「息を吸う」`;
+                }
+            });
+        }
+
+        // --- 量子麺透視（どんぶり5択テスト） ---
+        function selectBowl(index) {
+            SoundSynth.init();
+            
+            game.clairvoyanceCorrect = Math.floor(Math.random() * 5);
+            const logEl = document.getElementById('clairvoyance-log');
+
+            const bowls = document.querySelectorAll('.bowl-select');
+            bowls.forEach(b => b.classList.remove('neon-border-gold', 'border-amber-400'));
+
+            if (index === game.clairvoyanceCorrect) {
+                game.clairvoyanceStreak++;
+                addVibePoints(150);
+                
+                logEl.innerHTML = `<span class="text-amber-300 font-bold">【麺透視 成功！】</span><br>見事じゃ！${index + 1}番目のどんぶりから神々しい特選海老天のオーラを感じ取った。`;
+                bowls[index].classList.add('neon-border-gold', 'border-amber-400');
+
+                confetti({
+                    particleCount: 30,
+                    angle: 60,
+                    spread: 55,
+                    origin: { x: 0 }
+                });
+
+                SoundSynth.playCosmicBell();
+            } else {
+                game.clairvoyanceStreak = 0;
+                logEl.innerHTML = `<span class="text-red-400">【麺透視 失敗...】</span><br>ハズレ！海老天が宿っていたのは <strong class="text-amber-300">${game.clairvoyanceCorrect + 1}番</strong> だった。修行が足りない。`;
+                SoundSynth.playBreathAir(false);
+            }
+
+            document.getElementById('toushi-score').innerText = `連続成功: ${game.clairvoyanceStreak}回`;
+
+            if (game.clairvoyanceStreak >= 3) {
+                game.clairvoyanceStreak = 0;
+                addVibePoints(400);
+                logEl.innerHTML += `<br><span class="text-green-400 font-bold">★ 奇跡覚醒：うどん力の悟りを開いた！</span>`;
+                
+                confetti({
+                    particleCount: 100,
+                    spread: 80,
+                    origin: { y: 0.6 }
+                });
+            }
+        }
+
+        // --- 経験値（コシ波動）追加＆レベルアップ判定 ---
+        function addVibePoints(pts) {
+            game.vibePoints += pts;
+            
+            if (game.vibePoints >= 3000) {
+                game.vibeLevel = 4;
+            } else if (game.vibePoints >= 1500) {
+                game.vibeLevel = 3;
+            } else if (game.vibePoints >= 500) {
+                game.vibeLevel = 2;
+            }
+
+            const levelNames = {
+                1: "LEVEL 1 (見習い職人)",
+                2: "LEVEL 2 (出汁職人)",
+                3: "LEVEL 3 (麺仙人)",
+                4: "LEVEL 4 (極・サイ麺マスター)"
+            };
+
+            document.getElementById('vibe-level-display').innerText = levelNames[game.vibeLevel];
+            document.getElementById('vibe-points-display').innerText = `${game.vibePoints} / 3000`;
+        }
+
+        // --- タブ切り替え ---
+        function switchTab(tabId) {
+            SoundSynth.init();
+            
+            const tabs = document.querySelectorAll('.tab-content');
+            tabs.forEach(tab => tab.classList.add('hidden'));
+
+            document.getElementById(tabId).classList.remove('hidden');
+
+            SoundSynth.playCosmicBell();
+        }
+
+        // --- メイン描画ループ ---
+        function mainLoop() {
+            game.frame++;
+
+            if (game.monitorMode === "2D") {
+                Monitor2D.draw();
+            } else {
+                Monitor3D.update();
+            }
+
+            // 稀に自動で心地よい鐘が鳴る
+            if (game.frame % 360 === 0 && Math.random() > 0.6) {
+                SoundSynth.playCosmicBell();
+            }
+
+            requestAnimationFrame(mainLoop);
+        }
+
+        // --- アプリ初期化 ---
+        window.addEventListener('load', () => {
+            // 2D 波動モニター初期化 & ループ開始
+            Monitor2D.init();
+            
+            // アニメーションループ開始
+            mainLoop();
+
+            // 呼吸法ミニゲーム立ち上げ
+            initBreathGame();
+
+            // ウィンドウリサイズ連動
+            window.addEventListener('resize', () => {
+                Monitor2D.resize();
+                if (Monitor3D.isInitialized) {
+                    Monitor3D.resize();
+                }
+            });
+
+            // 初回操作でオーディオアンロック
+            const unlockAudio = () => {
+                SoundSynth.init();
+                window.removeEventListener('click', unlockAudio);
+                window.removeEventListener('touchstart', unlockAudio);
+            };
+            window.addEventListener('click', unlockAudio);
+            window.addEventListener('touchstart', unlockAudio);
+        });
+    </script>
+</body>
+</html>
