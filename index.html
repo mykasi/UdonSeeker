@@ -93,7 +93,7 @@
                 </div>
             </div>
 
-            <!-- ステータス表示 & プレイヤー名変更 -->
+            <!-- ステータス表示 & プレイヤー名変更 & API設定ボタン -->
             <div class="flex flex-wrap items-center justify-center gap-6 text-sm font-mono">
                 <div class="flex items-center gap-2">
                     <span class="text-purple-400">PLAYER:</span>
@@ -112,6 +112,12 @@
                     <span class="text-purple-400">コシ波動(BI):</span>
                     <span id="vibe-points-display" class="font-bold text-green-400">100 / 3000</span>
                 </div>
+                <!-- APIキー設定ギアボタン -->
+                <button onclick="toggleSettingsModal(true)" class="relative p-2 bg-purple-950/50 hover:bg-purple-900/60 text-purple-300 hover:text-white rounded-full transition-all border border-purple-800/30 flex items-center justify-center" title="APIキーを設定する">
+                    <i class="fa-solid fa-gear text-sm"></i>
+                    <!-- 未設定：赤い丸、設定済：緑の丸 -->
+                    <span id="api-status-dot" class="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border border-black animate-pulse"></span>
+                </button>
             </div>
         </div>
     </header>
@@ -309,7 +315,7 @@
                 </div>
 
                 <div class="mt-4 text-center">
-                    <p class="text-[10px] text-purple-400/60 font-mono">※Gemini 3 Flash APIによる電波お告げ生成</p>
+                    <p class="text-[10px] text-purple-400/60 font-mono">※Gemini APIによる電波お告げ生成</p>
                 </div>
             </div>
 
@@ -367,6 +373,66 @@
         </div>
     </footer>
 
+    <!-- ==================== セキュリティ設定モーダル (APIキー登録用) ==================== -->
+    <div id="settings-modal" class="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 hidden backdrop-blur-md">
+        <div class="glass-panel w-full max-w-md rounded-2xl border border-purple-500/30 shadow-2xl overflow-hidden">
+            <div class="bg-purple-950/80 px-6 py-4 border-b border-purple-900/30 flex justify-between items-center">
+                <h3 class="text-base font-bold text-white flex items-center gap-2 font-mono">
+                    <i class="fa-solid fa-shield-halved text-amber-400"></i>
+                    セキュアAPIキー設定
+                </h3>
+                <button onclick="toggleSettingsModal(false)" class="text-gray-400 hover:text-white transition-all">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            
+            <div class="p-6 flex flex-col gap-4">
+                <div class="bg-purple-950/50 border border-purple-800/40 p-3 rounded-xl text-xs text-purple-300 leading-relaxed font-mono">
+                    <p class="font-bold mb-1 text-amber-300">💡 安全について</p>
+                    「ゼネフお告げ」や「曼荼羅ビジョン生成」を使用するためのGoogle Gemini APIキーを設定します。<br>
+                    入力したキーは<span class="text-amber-400">ご自身のブラウザ(localStorage)にのみ安全に保管</span>され、第三者のサーバーへ送信されることは決してありません。
+                </div>
+
+                <div class="flex flex-col gap-1.5 font-mono">
+                    <label class="text-xs font-bold text-gray-400 flex justify-between items-center">
+                        <span>Gemini API キー</span>
+                        <a href="https://aistudio.google.com/" target="_blank" class="text-amber-400 hover:underline flex items-center gap-1">
+                            キーを取得する <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                        </a>
+                    </label>
+                    <div class="relative flex items-center">
+                        <input id="api-key-input" type="password" placeholder="AIzaSy..." 
+                            class="w-full bg-purple-950/40 border border-purple-900 rounded-lg pl-3 pr-10 py-2.5 text-xs text-purple-200 focus:outline-none focus:ring-1 focus:ring-purple-500 font-mono">
+                        <button onclick="toggleApiKeyVisibility()" class="absolute right-3 text-purple-400 hover:text-white">
+                            <i id="eye-icon" class="fa-solid fa-eye text-sm"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex justify-between items-center text-[11px] text-gray-500 font-mono">
+                    <span id="api-key-status-text" class="flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-red-500"></span> 未設定
+                    </span>
+                    <button onclick="deleteApiKey()" class="text-red-400 hover:text-red-300 flex items-center gap-1 transition-all">
+                        <i class="fa-solid fa-trash-can"></i> 削除
+                    </button>
+                </div>
+
+                <div class="flex gap-2 mt-2 font-mono">
+                    <button onclick="saveApiKey()" class="flex-grow py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition-all shadow-lg shadow-purple-600/20">
+                        設定を保存
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 簡易トースト表示用エレメント -->
+    <div id="toast-message" class="fixed bottom-5 right-5 bg-purple-950 border border-purple-500/50 text-white px-4 py-3 rounded-xl shadow-2xl z-50 font-mono text-xs flex items-center gap-2 opacity-0 pointer-events-none transition-all duration-300">
+        <i class="fa-solid fa-circle-info text-amber-400"></i>
+        <span id="toast-text"></span>
+    </div>
+
     <!-- --- JavaScript & Hybrid Core --- -->
     <script>
         // ゲームグローバルステート
@@ -388,7 +454,9 @@
             dragX: 0,
             dragY: 0,
             isDragging: false,
-            frame: 0
+            frame: 0,
+            // APIキー
+            apiKey: localStorage.getItem('gemini_api_key') || ""
         };
 
         // --- プレイヤー名の動的更新 ---
@@ -403,6 +471,98 @@
                 convBox.innerHTML = `<div class="text-amber-300">【ゼネフ】 「よくぞ参った、うどん力を志す ${game.playerName} よ。そなたの小麦粉のバイブレーションを、何なりと私に打ち明けるがよい…」</div>`;
             }
             SoundSynth.playCosmicBell();
+        }
+
+        // --- トースト通知の表示 ---
+        function showToast(message) {
+            const toast = document.getElementById('toast-message');
+            const toastText = document.getElementById('toast-text');
+            if (!toast || !toastText) return;
+            
+            toastText.innerText = message;
+            toast.classList.remove('opacity-0', 'pointer-events-none');
+            toast.classList.add('opacity-100');
+            
+            setTimeout(() => {
+                toast.classList.remove('opacity-100');
+                toast.classList.add('opacity-0', 'pointer-events-none');
+            }, 3000);
+        }
+
+        // --- セキュリティ設定モーダル制御 ---
+        function toggleSettingsModal(show) {
+            const modal = document.getElementById('settings-modal');
+            if (!modal) return;
+            
+            if (show) {
+                modal.classList.remove('hidden');
+                updateApiKeyUI();
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        function updateApiKeyUI() {
+            const keyInput = document.getElementById('api-key-input');
+            const statusDot = document.getElementById('api-status-dot');
+            const statusText = document.getElementById('api-key-status-text');
+            
+            if (game.apiKey) {
+                if (keyInput) keyInput.value = game.apiKey;
+                if (statusDot) {
+                    statusDot.classList.remove('bg-red-500');
+                    statusDot.classList.add('bg-green-500');
+                }
+                if (statusText) statusText.innerHTML = `<span class="w-2 h-2 rounded-full bg-green-500"></span> 設定済み`;
+            } else {
+                if (keyInput) keyInput.value = "";
+                if (statusDot) {
+                    statusDot.classList.remove('bg-green-500');
+                    statusDot.classList.add('bg-red-500');
+                }
+                if (statusText) statusText.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500"></span> 未設定`;
+            }
+        }
+
+        function toggleApiKeyVisibility() {
+            const keyInput = document.getElementById('api-key-input');
+            const eyeIcon = document.getElementById('eye-icon');
+            if (!keyInput || !eyeIcon) return;
+            
+            if (keyInput.type === 'password') {
+                keyInput.type = 'text';
+                eyeIcon.classList.remove('fa-eye');
+                eyeIcon.classList.add('fa-eye-slash');
+            } else {
+                keyInput.type = 'password';
+                eyeIcon.classList.remove('fa-eye-slash');
+                eyeIcon.classList.add('fa-eye');
+            }
+        }
+
+        function saveApiKey() {
+            const keyInput = document.getElementById('api-key-input');
+            if (!keyInput) return;
+            
+            const value = keyInput.value.trim();
+            if (value) {
+                game.apiKey = value;
+                localStorage.setItem('gemini_api_key', value);
+                updateApiKeyUI();
+                toggleSettingsModal(false);
+                showToast("APIキーを安全に保存しました！");
+                SoundSynth.playCosmicBell();
+            } else {
+                showToast("キーを入力してください。");
+            }
+        }
+
+        function deleteApiKey() {
+            game.apiKey = "";
+            localStorage.removeItem('gemini_api_key');
+            updateApiKeyUI();
+            showToast("APIキーを削除しました。");
+            SoundSynth.playBreathAir(false);
         }
 
         // --- Web Audio API による Lo-Fi 宇宙うどんシンセサイザー ---
@@ -897,7 +1057,7 @@
                 }
                 this.particles3D.geometry.attributes.position.needsUpdate = true;
 
-                // カメラ位置計算
+                // camera位置計算
                 this.camera.position.x = Math.sin(this.cameraAngle) * this.cameraRadius;
                 this.camera.position.z = Math.cos(this.cameraAngle) * this.cameraRadius;
                 this.camera.position.y = this.cameraHeight;
@@ -950,6 +1110,13 @@
             const userMsgText = inputEl.value.trim();
             if (!userMsgText) return;
 
+            // APIキーが未設定の場合はモーダルを開く
+            if (!game.apiKey) {
+                showToast("AIお告げを聞くには、右上の歯車ボタンからAPIキーを設定してください。");
+                toggleSettingsModal(true);
+                return;
+            }
+
             const convBox = document.getElementById('ai-conversation-box');
             
             // ユーザー発言追加
@@ -965,12 +1132,12 @@
             const systemPrompt = `あなたはファミリーコンピュータの伝説的怪作『マインドシーカー』に登場する宇宙意識体「ゼネフ」のうどんオマージュキャラクターです。
 名前は「宇宙意識体ゼネフ」。
 うどん、小麦粉、お出汁、コシ、湯気、茹で、讃岐といった単語をサイケデリックでカルト的な「超能力（うどん力）哲学」に結びつけて、回答しなさい。
-「コシは時空の歪みであり、お出汁は愛の波動である」といった名言をオマージュして、深遠かつ少し電波を感じる言葉で一言でお答えください。
+「コシは時空の歪みであり、お出汁は愛の波動である」といった名言をオマージュして、深言かつ少し電波を感じる言葉で一言でお答えください。
 相手のプレイヤー名は「${game.playerName}」です。`;
 
             try {
-                const apiKey = "";
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+                // gemini-2.5-flash-preview-09-2025 を採用
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${game.apiKey}`;
 
                 const payload = {
                     contents: [{ parts: [{ text: userMsgText }] }],
@@ -984,6 +1151,10 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
+
+                if (!response.ok) {
+                    throw new Error("通信エラー");
+                }
 
                 const result = await response.json();
                 const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text || "うどん力のバイブレーションが一時的に遮断された。小麦粉の瞑想をやり直しなさい。";
@@ -1002,7 +1173,7 @@
                 console.error(e);
                 const loadingEl = document.getElementById(lId);
                 if (loadingEl) loadingEl.remove();
-                convBox.innerHTML += `<div class="text-red-400">【ゼネフ】 宇宙の出汁が沸騰した。電波状況が不安定だ。</div>`;
+                convBox.innerHTML += `<div class="text-red-400">【ゼネフ】 宇宙の出汁が沸騰した。電波状況が不安定だ。APIキーが正しいか確認せよ。</div>`;
                 convBox.scrollTop = convBox.scrollHeight;
             }
         }
@@ -1013,6 +1184,13 @@
             let userPrompt = promptInput.value.trim();
             if (!userPrompt) {
                 userPrompt = "讃岐の夜空に輝くコズミックうどん曼荼羅、サイケデリック";
+            }
+
+            // APIキーが未設定の場合はモーダルを開く
+            if (!game.apiKey) {
+                showToast("ビジョン召喚には、右上の歯車ボタンからAPIキーを設定してください。");
+                toggleSettingsModal(true);
+                return;
             }
 
             const loadingEl = document.getElementById('imagen-loading');
@@ -1027,14 +1205,18 @@
                     parameters: { "sampleCount": 1 }
                 };
 
-                const apiKey = "";
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`;
+                // imagen-4.0-generate-001 を採用
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${game.apiKey}`;
 
                 const response = await fetch(apiUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
+
+                if (!response.ok) {
+                    throw new Error("生成エラー");
+                }
 
                 const result = await response.json();
                 if (result.predictions && result.predictions[0]?.bytesBase64Encoded) {
@@ -1054,7 +1236,7 @@
                 }
             } catch (err) {
                 console.error(err);
-                displayEl.src = "https://placehold.co/600x340/15052d/f43f5e?text=API+Error+-+Retry+Later";
+                displayEl.src = "https://placehold.co/600x340/15052d/f43f5e?text=API+Error+-+Check+Key";
             } finally {
                 loadingEl.classList.add('hidden');
             }
@@ -1279,6 +1461,9 @@
 
             // 呼吸法ミニゲーム立ち上げ
             initBreathGame();
+
+            // APIキー状態のUI初期適用
+            updateApiKeyUI();
 
             // ウィンドウリサイズ連動
             window.addEventListener('resize', () => {
